@@ -1,0 +1,34 @@
+# main.py в прошивке
+import gc, machine, esp32
+import m5stick as m5
+from machine import I2C, Pin
+import time
+
+# Инициализация
+i2c = I2C(0, scl=Pin(22), sda=Pin(21))
+AXP_ADDR = 0x34
+
+def get_battery():
+    data = i2c.readfrom_mem(AXP_ADDR, 0x78, 2)
+    return (data[0] << 4 | data[1]) * 1.1 / 1000
+
+def show_diagnostics():
+    while True:
+        # Получение данных
+        cpu_freq = machine.freq() // 1000000
+        free_ram = gc.mem_free()
+        total_ram = free_ram + gc.mem_alloc()
+        voltage = get_battery()
+        temp = esp32.raw_temperature()
+        
+        # Вывод на экран
+        m5.clear_screen()
+        m5.print(f"CPU: {cpu_freq}MHz", 0, 0)
+        m5.print(f"RAM: {free_ram}/{total_ram}", 0, 15)
+        m5.print(f"BAT: {voltage:.2f}V", 0, 30)
+        m5.print(f"TEMP: {temp}F", 0, 45)
+        
+        time.sleep(2)
+
+# Автозапуск
+show_diagnostics()
