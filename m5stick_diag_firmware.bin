@@ -1,34 +1,39 @@
-# main.py в прошивке
+# main.py для прошивки
 import gc, machine, esp32
-import m5stick as m5
-from machine import I2C, Pin
-import time
+from machine import Pin, I2C
+import uos
+import utime
+import m5stack
 
-# Инициализация
+# Инициализация экрана
+lcd = m5stack.Display()
+lcd.clear()
+
+# Инициализация I2C для батареи
 i2c = I2C(0, scl=Pin(22), sda=Pin(21))
-AXP_ADDR = 0x34
 
-def get_battery():
-    data = i2c.readfrom_mem(AXP_ADDR, 0x78, 2)
-    return (data[0] << 4 | data[1]) * 1.1 / 1000
+def show(text, y):
+    lcd.text(10, y, text, lcd.WHITE)
 
-def show_diagnostics():
-    while True:
-        # Получение данных
-        cpu_freq = machine.freq() // 1000000
-        free_ram = gc.mem_free()
-        total_ram = free_ram + gc.mem_alloc()
-        voltage = get_battery()
-        temp = esp32.raw_temperature()
-        
-        # Вывод на экран
-        m5.clear_screen()
-        m5.print(f"CPU: {cpu_freq}MHz", 0, 0)
-        m5.print(f"RAM: {free_ram}/{total_ram}", 0, 15)
-        m5.print(f"BAT: {voltage:.2f}V", 0, 30)
-        m5.print(f"TEMP: {temp}F", 0, 45)
-        
-        time.sleep(2)
-
-# Автозапуск
-show_diagnostics()
+while True:
+    # Получаем данные
+    cpu = machine.freq() // 1000000
+    free = gc.mem_free()
+    total = free + gc.mem_alloc()
+    temp = esp32.raw_temperature()
+    
+    # Чтение батареи
+    try:
+        vbat = (i2c.readfrom_mem(0x34, 0x78, 2)[0] << 4 | i2c.readfrom_mem(0x34, 0x78, 2)[1]
+        vbat = vbat * 1.1 / 1000
+    except:
+        vbat = 0.0
+    
+    # Вывод на экран
+    lcd.clear()
+    show(f"CPU: {cpu}MHz", 10)
+    show(f"RAM: {free}/{total}", 30)
+    show(f"BAT: {vbat:.2f}V", 50)
+    show(f"TEMP: {temp}F", 70)
+    
+    utime.sleep(2)
