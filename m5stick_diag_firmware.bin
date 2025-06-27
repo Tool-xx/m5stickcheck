@@ -1,46 +1,48 @@
 import gc, machine, esp32
-import uos
-import utime
-from machine import Pin, I2C
-import m5stack
+from machine import Pin, I2C, Timer
+import time
+import axp202c  # Важно для управления питанием
+import st7789   # Родная библиотека дисплея
 
-# Инициализация экрана M5StickC Plus2
-lcd = m5stack.Display()
-lcd.clear()
-lcd.font(lcd.FONT_Default)
+# Инициализация питания
+pm = axp202c.PMU()
+pm.enablePower(axp202c.AXP202_LDO2)  # Включаем подсветку
 
-# Конфигурация I2C для AXP192
-i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)
-AXP_ADDR = 0x34
+# Инициализация дисплея (135x240)
+tft = st7789.ST7789(
+    spi=machine.SPI(2, baudrate=40000000, polarity=1),
+    width=135,
+    height=240,
+    reset=Pin(18, Pin.OUT),
+    dc=Pin(15, Pin.OUT),
+    cs=Pin(5, Pin.OUT),
+    backlight=Pin(12, Pin.OUT)
+)
+tft.init()
+tft.fill(0)  # Черный фон
 
-def get_battery():
-    try:
-        data = i2c.readfrom_mem(AXP_ADDR, 0x78, 2)
-        return (data[0] << 4 | data[1]) * 1.1 / 1000
-    except:
-        return 0.0
+# Шрифты
+import vga1_bold_16x32 as font  # Оптимальный шрифт
 
-def show_diagnostics():
+def show_stats():
     while True:
-        # Получение данных
-        cpu_freq = machine.freq() // 1000000
-        free_ram = gc.mem_free()
-        total_ram = free_ram + gc.mem_alloc()
-        voltage = get_battery()
-        temp_f = esp32.raw_temperature()
-        temp_c = (temp_f - 32) * 5/9  # Конвертация в °C
-
-        # Очистка экрана и вывод
-        lcd.clear()
+        # Получаем данные
+        cpu = machine.freq() // 1000000
+        free = gc.mem_free()
+        total = free + gc.mem_alloc()
+        temp = esp32.raw_temperature()
+        bat = pm.getBattVoltage() / 1000
         
-        # Вывод с учетом разрешения 135x240
-        lcd.text(10, 10,  "M5StickC Plus2 Diag", lcd.WHITE)
-        lcd.text(10, 30, f"CPU: {cpu_freq}MHz", lcd.GREEN)
-        lcd.text(10, 50, f"RAM: {free_ram}/{total_ram}", lcd.YELLOW)
-        lcd.text(10, 70, f"BAT: {voltage:.2f}V", lcd.ORANGE)
-        lcd.text(10, 90, f"TEMP: {temp_c:.1f}C/{temp_f}F", lcd.RED)
+        # Очищаем и выводим
+        tft.fill(0)
         
-        utime.sleep(2)
+        # Выводим данные с правильными координатами
+        tft.text(font, "CPU: {}MHz".format(cpu), 10, 20, st7789.WHITE)
+        tft.text(font, "RAM: {}/{}".format(free, total), 10, 60, st7789.GREEN)
+        tft.text(font, "BAT: {:.2f}V".format(bat), 10, 100, st7789.YELLOW)
+        tft.text(font, "TEMP: {}F".format(temp), 10, 140, st7789.RED)
+        
+        time.sleep(2)  # Обновление каждые 2 секунды
 
-# Автозапуск
-show_diagnostics()
+# Запуск
+show_stats()
