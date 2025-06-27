@@ -1,39 +1,46 @@
-# main.py для прошивки
 import gc, machine, esp32
-from machine import Pin, I2C
 import uos
 import utime
+from machine import Pin, I2C
 import m5stack
 
-# Инициализация экрана
+# Инициализация экрана M5StickC Plus2
 lcd = m5stack.Display()
 lcd.clear()
+lcd.font(lcd.FONT_Default)
 
-# Инициализация I2C для батареи
-i2c = I2C(0, scl=Pin(22), sda=Pin(21))
+# Конфигурация I2C для AXP192
+i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)
+AXP_ADDR = 0x34
 
-def show(text, y):
-    lcd.text(10, y, text, lcd.WHITE)
-
-while True:
-    # Получаем данные
-    cpu = machine.freq() // 1000000
-    free = gc.mem_free()
-    total = free + gc.mem_alloc()
-    temp = esp32.raw_temperature()
-    
-    # Чтение батареи
+def get_battery():
     try:
-        vbat = (i2c.readfrom_mem(0x34, 0x78, 2)[0] << 4 | i2c.readfrom_mem(0x34, 0x78, 2)[1]
-        vbat = vbat * 1.1 / 1000
+        data = i2c.readfrom_mem(AXP_ADDR, 0x78, 2)
+        return (data[0] << 4 | data[1]) * 1.1 / 1000
     except:
-        vbat = 0.0
-    
-    # Вывод на экран
-    lcd.clear()
-    show(f"CPU: {cpu}MHz", 10)
-    show(f"RAM: {free}/{total}", 30)
-    show(f"BAT: {vbat:.2f}V", 50)
-    show(f"TEMP: {temp}F", 70)
-    
-    utime.sleep(2)
+        return 0.0
+
+def show_diagnostics():
+    while True:
+        # Получение данных
+        cpu_freq = machine.freq() // 1000000
+        free_ram = gc.mem_free()
+        total_ram = free_ram + gc.mem_alloc()
+        voltage = get_battery()
+        temp_f = esp32.raw_temperature()
+        temp_c = (temp_f - 32) * 5/9  # Конвертация в °C
+
+        # Очистка экрана и вывод
+        lcd.clear()
+        
+        # Вывод с учетом разрешения 135x240
+        lcd.text(10, 10,  "M5StickC Plus2 Diag", lcd.WHITE)
+        lcd.text(10, 30, f"CPU: {cpu_freq}MHz", lcd.GREEN)
+        lcd.text(10, 50, f"RAM: {free_ram}/{total_ram}", lcd.YELLOW)
+        lcd.text(10, 70, f"BAT: {voltage:.2f}V", lcd.ORANGE)
+        lcd.text(10, 90, f"TEMP: {temp_c:.1f}C/{temp_f}F", lcd.RED)
+        
+        utime.sleep(2)
+
+# Автозапуск
+show_diagnostics()
